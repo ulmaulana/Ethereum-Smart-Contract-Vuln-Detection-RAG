@@ -1,0 +1,44 @@
+# Python bytecode and caches
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# Virtual environments and local Python config
+.venv/
+venv/
+env/
+.python-version
+
+# Secrets and machine-local config
+.env
+.env.*
+!.env.example
+
+# IDE and OS files that can leak local absolute paths
+.vscode/
+.idea/
+*.code-workspace
+Thumbs.db
+.DS_Store
+
+# Project datasets and archives
+dataset/
+
+# Generated artifacts
+processed/
+models/
+
+# Local databases, logs, and temp files
+*.db
+*.sqlite
+*.sqlite3
+*.log
+*.tmp
+*.bak
+*.pid
