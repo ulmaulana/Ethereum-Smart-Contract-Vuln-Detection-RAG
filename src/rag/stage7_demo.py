@@ -27,7 +27,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from preprocessing.config import PROCESSED_DIR
 from preprocessing.solidity_parser import parse_source_file, build_header_context
 from features.handcrafted import extract_features, feature_names
-from rag.explainer import explain_template, explain_with_llm
+from rag.explainer import explain_with_llm
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 MODELS_DIR = PROJECT_ROOT / "models"
@@ -158,7 +158,7 @@ def predict_per_function(funcs: list[dict], active: list[str],
     return {"functions": fn_results, "summary": contract_summary}
 
 
-def print_report(filename: str, results: dict, use_llm: bool = False):
+def print_report(filename: str, results: dict):
     print("\n" + "=" * 78)
     print(f"VULNERABILITY DETECTION REPORT: {filename}")
     print("=" * 78)
@@ -207,10 +207,7 @@ def print_report(filename: str, results: dict, use_llm: bool = False):
         print(f"\n{'~' * 78}")
         print(f"[ {cls.upper()} ]")
         print("~" * 78)
-        if use_llm:
-            print(explain_with_llm(cls, fn_source, contract_id))
-        else:
-            print(explain_template(cls, fn_source, contract_id))
+        print(explain_with_llm(cls, fn_source, contract_id, llm_provider="minimax"))
 
 
 # =====================================================================
@@ -219,7 +216,6 @@ def print_report(filename: str, results: dict, use_llm: bool = False):
 
 def main():
     args = sys.argv[1:]
-    use_llm = "--llm" in args
     args = [a for a in args if not a.startswith("--")]
 
     # Load contract
@@ -260,7 +256,7 @@ def main():
     print(f"[..] Running ML inference (avg across {NUM_FOLDS} folds)...")
     results = predict_per_function(funcs, active, tuned_thr)
 
-    print_report(filename, results, use_llm=use_llm)
+    print_report(filename, results)
 
 
 if __name__ == "__main__":
