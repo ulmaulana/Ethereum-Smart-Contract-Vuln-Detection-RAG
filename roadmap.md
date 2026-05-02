@@ -245,7 +245,7 @@ Optimasi biaya: pakai Claude Haiku 4.5 untuk filter, Opus 4.7 hanya untuk border
 
 | Resource | Biaya bulanan |
 |---|---|
-| GPU training (A100 / RTX 4090 via RunPod) | ~$200 |
+| GPU training (A100 / RTX 5090 via RunPod) | ~$200 |
 | Inference serving | ~$50 untuk traffic kecil |
 
 ### Estimasi sample complexity untuk F1 ≥ 0.95 per kelas
