@@ -5,7 +5,7 @@ dilengkapi penjelasan mitigasi via Retrieval-Augmented Generation (RAG).
 
 ## Highlight Hasil
 
-- **Macro F1 (contract-level): 0.579** — 2.78x lebih tinggi dari tool baseline terbaik (Mythril 0.208).
+- **Macro F1 (contract-level): 0.579** - 2.78x lebih tinggi dari tool baseline terbaik (Mythril 0.208).
 - **WIN 6 dari 7 class** vs 9 SmartBugs baseline tools (Slither, Mythril, Oyente, Securify, dll.).
 - Reentrancy F1 = 0.867, Unchecked low-level calls F1 = 0.933.
 - **First & only model** yang mendeteksi `bad_randomness` (semua 9 baseline tools = 0.000).
@@ -18,7 +18,7 @@ Detail lengkap di `processed/case_study_report.md`, `processed/evaluation_report
 
 Project ini menggunakan tiga dataset SmartBugs dengan peran yang berbeda dan saling melengkapi.
 
-### 1. SmartBugs Curated (143 contracts) — Test Set (Gold Standard)
+### 1. SmartBugs Curated (143 contracts) - Test Set (Gold Standard)
 
 Dataset kecil tapi berkualitas tinggi. Setiap kontrak sudah di-label manual oleh peneliti
 SmartBugs yang tahu pasti vulnerability apa di line berapa. Karena label-nya dapat dipercaya
@@ -27,9 +27,9 @@ SmartBugs yang tahu pasti vulnerability apa di line berapa. Karena label-nya dap
 Di pipeline: hanya boleh muncul di TEST side saat evaluasi. Tidak pernah dipakai sendirian
 untuk train karena terlalu kecil untuk ML.
 
-### 2. SmartBugs Wild (47,000 contracts) — Training Data (Sumber Volume)
+### 2. SmartBugs Wild (47,000 contracts) - Training Data (Sumber Volume)
 
-Dataset besar dari mainnet Ethereum, tapi tidak punya label sama sekali — kita tidak tahu
+Dataset besar dari mainnet Ethereum, tapi tidak punya label sama sekali - kita tidak tahu
 kontrak mana yang vulnerable. Volumenya besar, jadi sangat bernilai untuk training ML, asal
 bisa dilabel dulu.
 
@@ -37,7 +37,7 @@ Di pipeline: di-label dengan weak supervision (lihat peran Results) → menghasi
 silver-labeled functions. Selalu di TRAIN side, tidak pernah dipakai untuk test karena
 label-nya noisy.
 
-### 3. SmartBugs Results (output 9 tools × kedua dataset) — Peran Ganda
+### 3. SmartBugs Results (output 9 tools × kedua dataset) - Peran Ganda
 
 Pre-computed analysis output dari 9 SmartBugs tools (Slither, Mythril, Oyente, Securify,
 Manticore, MAIAN, Osiris, SmartCheck, HoneyBadger) yang sudah dijalankan ke semua kontrak
@@ -98,13 +98,13 @@ npm install
 
 ## Cara Menjalankan Aplikasi
 
-Terminal 1 — Backend API:
+Terminal 1 - Backend API:
 
 ```bash
 python -m uvicorn src.api.main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
-Terminal 2 — Frontend:
+Terminal 2 - Frontend:
 
 ```bash
 cd frontend
@@ -177,7 +177,7 @@ Struktur folder lokal yang diharapkan:
 +--------------------------------------------------------------------+
 ```
 
-### Stage 1 — Olah Curated (Gold Label)
+### Stage 1 - Olah Curated (Gold Label)
 
 Input: `dataset/smartbugs-curated-main/dataset/<category>/<file>.sol` +
 `vulnerabilities.json`.
@@ -191,7 +191,7 @@ Langkah:
 
 Output: `processed/curated_labels.parquet`, `processed/curated_functions.parquet`.
 
-### Stage 2 — Olah Wild + Results (Silver Label via Tool Voting)
+### Stage 2 - Olah Wild + Results (Silver Label via Tool Voting)
 
 Input: kontrak Wild + `smartbugs-results-master/results/<tool>/icse20/<addr>/result.json`.
 
@@ -206,16 +206,16 @@ Langkah:
 Output: `processed/wild_labels.parquet`, `processed/wild_functions.parquet`,
 `processed/wild_pool.parquet`.
 
-### Stage 3 — K-Fold Split
+### Stage 3 - K-Fold Split
 
 - Curated dibagi 5 fold dengan multi-label stratified split.
-- Wild di-sample jadi balanced pool (~19,906 contracts) — selalu di TRAIN side.
+- Wild di-sample jadi balanced pool (~19,906 contracts) - selalu di TRAIN side.
 - Aturan: TEST hanya gold (Curated), TRAIN bisa campur (Curated + Wild silver).
 
 Output: `processed/curated_folds.parquet`, `processed/wild_pool.parquet`,
 `processed/cv_split_summary.json`.
 
-### Stage 4 — Function Extraction + Multi-Source Features
+### Stage 4 - Function Extraction + Multi-Source Features
 
 **4a. Function-level extraction** dengan custom Solidity parser
 (`src/preprocessing/solidity_parser.py`). Hasil: 972 Curated functions + 591k Wild functions.
@@ -232,7 +232,7 @@ RESULTS dataset → per-detector counts + per-tool totals + per-category votes.
 
 Output: `processed/sampled_functions_v2.parquet` (110k rows × 193 columns).
 
-### Stage 5 — Training XGBoost (Multi-Source Fusion)
+### Stage 5 - Training XGBoost (Multi-Source Fusion)
 
 Pipeline akurasi terbaru menyediakan dua mode:
 
@@ -257,7 +257,7 @@ Output:
 - `processed/predictions_function_level.parquet`
 - `processed/metrics_aggregated.json`, `metrics_per_fold.json`
 
-### Stage 6 — Evaluasi Contract-Level + Comparison vs 9 Tools
+### Stage 6 - Evaluasi Contract-Level + Comparison vs 9 Tools
 
 - Aggregate function predictions → contract level (max probability per class).
 - Tuning threshold per class untuk maximize F1.
@@ -277,7 +277,7 @@ Tampilkan rekap rapi:
 python src/training/show_results.py
 ```
 
-### Stage 7 — RAG Knowledge Base + Explainer
+### Stage 7 - RAG Knowledge Base + Explainer
 
 ```bash
 python src/rag/build_index.py    # build ChromaDB index dari knowledge base
@@ -287,7 +287,7 @@ python src/rag/stage7_demo.py    # end-to-end demo: predict + explain
 Hasil: predictions ditemani penjelasan vulnerability + mitigasi + kode fix dalam
 Bahasa Indonesia, lengkap dengan referensi SWC Registry.
 
-### Stage 8 — Case Study Real-World Hacks
+### Stage 8 - Case Study Real-World Hacks
 
 Validasi model di 10 kontrak hack terkenal (The DAO, Parity Wallet, BEC Token,
 SmartBillions, GovernMental, dll.) dengan total kerugian historis >$1 miliar.
@@ -299,7 +299,7 @@ python src/case_study/stage8_hack_detection.py --no-rag   # versi cepat
 
 Output:
 
-- `processed/case_study_report.md` — detailed report per hack + honest analysis
+- `processed/case_study_report.md` - detailed report per hack + honest analysis
 - `processed/case_study_summary.csv`
 
 Detection rate: 4/10 (3 FULL_MATCH + 1 PARTIAL). Honest analysis menjelaskan setiap miss
@@ -312,7 +312,7 @@ case dengan technical reason di section "Why Some Detections Failed".
 | Curated (vulnerabilities.json)  | 143        | Gold       | Test + Train       |
 | Wild + Results (tool voting ≥2) | ~35k       | Silver     | Train (bulk)       |
 
-Test set HANYA berisi gold label — supaya evaluasi tetap valid.
+Test set HANYA berisi gold label - supaya evaluasi tetap valid.
 
 ## Taksonomi Vulnerability (DASP Top 10)
 
@@ -325,11 +325,11 @@ Test set HANYA berisi gold label — supaya evaluasi tetap valid.
 
 ## Dokumentasi Pendukung
 
-- `processed/training_report.md` — function-level metrics per fold
-- `processed/evaluation_report.md` — contract-level + comparison vs 9 tools
-- `processed/case_study_report.md` — validasi 10 famous hack contracts
-- `processed/stage9_production_roadmap.md` — roadmap deploy ke production
-- `processed/stage10_limitations_future_work.md` — limitasi + future work + threats to validity
+- `processed/training_report.md` - function-level metrics per fold
+- `processed/evaluation_report.md` - contract-level + comparison vs 9 tools
+- `processed/case_study_report.md` - validasi 10 famous hack contracts
+- `processed/stage9_production_roadmap.md` - roadmap deploy ke production
+- `processed/stage10_limitations_future_work.md` - limitasi + future work + threats to validity
 
 ## Lisensi & Atribusi
 
