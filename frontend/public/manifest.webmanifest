@@ -1,0 +1,15 @@
+{
+  "name": "Smart Contract Vulnerability Detector",
+  "short_name": "SCVD",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#020617",
+  "theme_color": "#4F46E5",
+  "icons": [
+    {
+      "src": "/favicon.ico",
+      "sizes": "48x48",
+      "type": "image/x-icon"
+    }
+  ]
+}

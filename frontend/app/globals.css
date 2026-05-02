@@ -1,0 +1,105 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 222 47% 98%;
+    --foreground: 222 47% 11%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+    --primary: 243 75% 59%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 215 32% 91%;
+    --secondary-foreground: 222 47% 11%;
+    --muted: 214 32% 94%;
+    --muted-foreground: 215 18% 44%;
+    --accent: 214 32% 92%;
+    --accent-foreground: 222 47% 11%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 214 28% 84%;
+    --input: 214 28% 84%;
+    --ring: 243 75% 59%;
+    --radius: 1.5rem;
+  }
+
+  .dark {
+    --background: 222 47% 7%;
+    --foreground: 210 40% 96%;
+    --card: 222 40% 11%;
+    --card-foreground: 210 40% 96%;
+    --popover: 222 40% 11%;
+    --popover-foreground: 210 40% 96%;
+    --primary: 243 75% 59%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 217 33% 17%;
+    --secondary-foreground: 210 40% 96%;
+    --muted: 217 33% 17%;
+    --muted-foreground: 215 20% 72%;
+    --accent: 217 33% 18%;
+    --accent-foreground: 210 40% 96%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 215 27% 22%;
+    --input: 215 27% 22%;
+    --ring: 243 75% 59%;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  html {
+    @apply scroll-smooth antialiased;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans;
+    background-image:
+      radial-gradient(circle at 20% 20%, rgba(79, 70, 229, 0.14), transparent 24%),
+      radial-gradient(circle at 80% 0%, rgba(14, 165, 233, 0.10), transparent 18%);
+  }
+
+  a {
+    @apply transition-colors;
+  }
+}
+
+@layer components {
+  .page-shell {
+    @apply mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8;
+  }
+
+  .panel {
+    @apply rounded-[28px] border border-border/60 bg-card/80 shadow-[0_24px_80px_rgba(15,23,42,0.16)] backdrop-blur;
+  }
+
+  .prose-rag {
+    @apply max-w-none text-sm leading-7 text-muted-foreground;
+  }
+
+  .prose-rag h1,
+  .prose-rag h2,
+  .prose-rag h3 {
+    @apply mb-3 mt-6 text-base font-semibold text-foreground first:mt-0;
+  }
+
+  .prose-rag p {
+    @apply mb-3;
+  }
+
+  .prose-rag ul {
+    @apply mb-3 ml-5 list-disc;
+  }
+
+  .prose-rag a {
+    @apply font-medium text-foreground underline decoration-border underline-offset-4;
+  }
+
+  .prose-rag code:not(pre code) {
+    @apply rounded bg-muted px-1.5 py-0.5 text-[0.85em] text-foreground;
+  }
+}
