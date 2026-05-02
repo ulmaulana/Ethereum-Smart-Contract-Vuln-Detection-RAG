@@ -28,7 +28,6 @@ Thumbs.db
 .DS_Store
 
 # Project datasets and archives
-dataset/
 
 # Generated artifacts
 processed/
@@ -42,3 +41,11 @@ models/
 *.tmp
 *.bak
 *.pid
+
+#docs
+docs
+agents.md
+report_final
+
+#dataset
+dataset/

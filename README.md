@@ -3,270 +3,338 @@
 Deteksi kerentanan pada smart contract Ethereum (Solidity) menggunakan Machine Learning,
 dilengkapi penjelasan mitigasi via Retrieval-Augmented Generation (RAG).
 
-## Struktur
+## Highlight Hasil
+
+- **Macro F1 (contract-level): 0.579** — 2.78x lebih tinggi dari tool baseline terbaik (Mythril 0.208).
+- **WIN 6 dari 7 class** vs 9 SmartBugs baseline tools (Slither, Mythril, Oyente, Securify, dll.).
+- Reentrancy F1 = 0.867, Unchecked low-level calls F1 = 0.933.
+- **First & only model** yang mendeteksi `bad_randomness` (semua 9 baseline tools = 0.000).
+- Validasi case study: detect The DAO hack ($60M) dengan confidence 0.999.
+
+Detail lengkap di `processed/case_study_report.md`, `processed/evaluation_report.md`,
+`processed/stage9_production_roadmap.md`, dan `processed/stage10_limitations_future_work.md`.
+
+## Peran Tiga Dataset
+
+Project ini menggunakan tiga dataset SmartBugs dengan peran yang berbeda dan saling melengkapi.
+
+### 1. SmartBugs Curated (143 contracts) — Test Set (Gold Standard)
+
+Dataset kecil tapi berkualitas tinggi. Setiap kontrak sudah di-label manual oleh peneliti
+SmartBugs yang tahu pasti vulnerability apa di line berapa. Karena label-nya dapat dipercaya
+100%, dataset ini dipakai sebagai acuan kebenaran untuk mengukur akurasi model.
+
+Di pipeline: hanya boleh muncul di TEST side saat evaluasi. Tidak pernah dipakai sendirian
+untuk train karena terlalu kecil untuk ML.
+
+### 2. SmartBugs Wild (47,000 contracts) — Training Data (Sumber Volume)
+
+Dataset besar dari mainnet Ethereum, tapi tidak punya label sama sekali — kita tidak tahu
+kontrak mana yang vulnerable. Volumenya besar, jadi sangat bernilai untuk training ML, asal
+bisa dilabel dulu.
+
+Di pipeline: di-label dengan weak supervision (lihat peran Results) → menghasilkan ~35k
+silver-labeled functions. Selalu di TRAIN side, tidak pernah dipakai untuk test karena
+label-nya noisy.
+
+### 3. SmartBugs Results (output 9 tools × kedua dataset) — Peran Ganda
+
+Pre-computed analysis output dari 9 SmartBugs tools (Slither, Mythril, Oyente, Securify,
+Manticore, MAIAN, Osiris, SmartCheck, HoneyBadger) yang sudah dijalankan ke semua kontrak
+Curated dan Wild. Dataset ini punya dua fungsi sekaligus:
+
+**Fungsi A: Label generator untuk Wild.** Untuk setiap kontrak Wild, lihat output 9 tools.
+Kalau ≥2 tools setuju kontrak vulnerable di class X → beri silver label positive. Ini cara
+unlock 35k training samples dari Wild yang tadinya unlabeled.
+
+**Fungsi B: Input feature ke ML model (106 features).** Output 9 tools bukan dipakai sebagai
+predictor langsung, tapi dijadikan input feature ke XGBoost. Model belajar pattern: "kalau
+Slither bilang reentrancy DAN Mythril setuju, trust tinggi", atau "kalau Securify sering
+false positive di class X, ignore".
+
+### Ringkasan Peran
+
+| Dataset  | Peran 1 Kalimat                                                 |
+|----------|-----------------------------------------------------------------|
+| Curated  | Acuan kebenaran (gold) untuk **mengukur akurasi** model         |
+| Wild     | Sumber **volume training data** (lewat silver labeling)         |
+| Results  | **Memberi label** ke Wild + jadi **input feature** ke ML model  |
+
+**Sinergi:** Curated kasih *quality*, Wild kasih *quantity*, Results jadi *jembatan* yang
+menghubungkan keduanya plus memperkaya feature.
+
+**Aturan emas:** Test SELALU pakai Curated gold. Train boleh campur Curated + Wild silver.
+
+## Struktur Project
 
 ```
 .
 ├── dataset/                              # 3 dataset SmartBugs (input)
 │   ├── smartbugs-curated-main/           # 143 kontrak gold-labeled
 │   ├── smartbugs-wild-master/            # 47k kontrak mainnet
-│   └── smartbugs-results-master/         # hasil 9 tools analisis
+│   └── smartbugs-results-master/         # output 9 tools (pre-computed)
 ├── src/
-│   └── preprocessing/                    # Pipeline preprocessing
-│       ├── config.py                     # path & konstanta
-│       ├── verify_dataset.py             # sanity check dataset
-│       ├── stage1_curated.py             # gold labels dari Curated
-│       ├── stage2_wild.py                # silver labels dari Wild+Results (tool voting)
-│       └── stage3_split.py               # train/val/test split
-├── processed/                            # output preprocessing
-│   ├── curated_labels.parquet/.csv
-│   ├── wild_labels.parquet/.csv
-│   ├── train.parquet
-│   ├── val.parquet
-│   ├── test.parquet
-│   └── split_summary.json
+│   ├── preprocessing/                    # Pipeline preprocessing (Stage 1-4)
+│   ├── features/                         # Hand-crafted, tool, dan rule features
+│   ├── training/                         # Training XGBoost + evaluasi (Stage 5-6)
+│   ├── rag/                              # Knowledge base + ChromaDB + explainer (Stage 7)
+│   ├── case_study/                       # Validasi 10 hack contracts terkenal (Stage 8)
+│   └── api/                              # FastAPI inference backend
+├── frontend/                             # Next.js UI (opsional)
+├── processed/                            # Output pipeline + reports
+├── models/                               # XGBoost models (fast/deep) + TF-IDF vectorizer
 └── requirements.txt
 ```
 
 ## Setup
 
 ```bash
-# Install dependencies (sekali saja)
 pip install -r requirements.txt
 ```
 
+```bash
+npm install
+```
+
+## Cara Menjalankan Aplikasi
+
+Terminal 1 — Backend API:
+
+```bash
+python -m uvicorn src.api.main:app --host 127.0.0.1 --port 8000 --reload
+```
+
+Terminal 2 — Frontend:
+
+```bash
+cd frontend
+npm run dev
+```
+
+Backend membaca `.env` dan `.env.local`. Minimal pastikan:
+
+```env
+NEXT_PUBLIC_API_URL=http://localhost:8000
+MINIMAX_API_KEY=...
+```
+
+Endpoint utama:
+
+- `GET  /api/v1/health`
+- `POST /api/v1/scan`
+
+Kalau `include_rag=true`, backend memanggil MiniMax untuk explanation berbasis RAG.
+Untuk uji inference ML murni tanpa LLM, kirim request dengan `options.include_rag=false`.
+
 ## Sumber Dataset
 
-Project ini menggunakan tiga dataset dari ekosistem SmartBugs:
-
 - SmartBugs Curated: https://github.com/smartbugs/smartbugs-curated
+- SmartBugs Wild   : https://github.com/smartbugs/smartbugs-wild
 - SmartBugs Results: https://github.com/smartbugs/smartbugs-results
-- SmartBugs Wild: https://github.com/smartbugs/smartbugs-wild
 
 Struktur folder lokal yang diharapkan:
 
-- `dataset/smartbugs-curated-main/` dari `smartbugs-curated`
-- `dataset/smartbugs-results-master/` dari `smartbugs-results`
-- `dataset/smartbugs-wild-master/` dari `smartbugs-wild`
+- `dataset/smartbugs-curated-main/`
+- `dataset/smartbugs-wild-master/`
+- `dataset/smartbugs-results-master/`
 
-## Menjalankan Pipeline Preprocessing
+## Pipeline Lengkap (Stage 1-8)
 
-Jalankan secara berurutan dari folder `src/preprocessing`:
+### Overview
+
+```
++--------------------------------------------------------------------+
+| CURATED (143 gold)   WILD (47k raw)        RESULTS (9 tools out)   |
+|        |                  |                       |                 |
+|        |                  | <-- Tool voting ------+                 |
+|        |                  |     (>=2 setuju = silver)               |
+|        v                  v                                          |
+|  curated_labels      wild_labels (35k silver)                        |
+|        |                  |                                          |
+|        +--------+---------+                                          |
+|                 v                                                    |
+|        K-Fold split + Wild pool sampling                             |
+|                 v                                                    |
+|        Function-level extraction (parser Solidity)                   |
+|                 v                                                    |
+|        Smart sampling + 53 hand-crafted features                     |
+|                 v                                                    |
+|        Augment: + 106 tool features <-- (RESULTS dataset)            |
+|                  + 10 expert rule features                           |
+|                  + 5000 TF-IDF features                              |
+|                  = 5,170 features per function                       |
+|                 v                                                    |
+|        XGBoost 5-Fold CV training                                    |
+|        (TRAIN: Curated + Wild silver, TEST: Curated gold)            |
+|                 v                                                    |
+|        Aggregate to contract-level + threshold tuning                |
+|                 v                                                    |
+|        Evaluate vs 9 baseline tools (RESULTS)                        |
+|                 v                                                    |
+|        RAG explanation (ChromaDB + knowledge base)                   |
+|                 v                                                    |
+|        Case study di 10 famous hack contracts                        |
++--------------------------------------------------------------------+
+```
+
+### Stage 1 — Olah Curated (Gold Label)
+
+Input: `dataset/smartbugs-curated-main/dataset/<category>/<file>.sol` +
+`vulnerabilities.json`.
+
+Langkah:
+
+1. Parse `vulnerabilities.json` untuk mapping file → kategori → line vulnerability.
+2. Untuk setiap `.sol`: baca source, parse function ranges, map vuln line ke function,
+   extract header context.
+3. Hasil: dataset function-level dengan label gold per function.
+
+Output: `processed/curated_labels.parquet`, `processed/curated_functions.parquet`.
+
+### Stage 2 — Olah Wild + Results (Silver Label via Tool Voting)
+
+Input: kontrak Wild + `smartbugs-results-master/results/<tool>/icse20/<addr>/result.json`.
+
+Langkah:
+
+1. Iterasi setiap kontrak Wild, baca output 9 tools.
+2. Mapping nama vulnerability per tool → kategori SmartBugs.
+3. Aggregate vote per kategori per kontrak.
+4. Apply threshold `>=2 tools` → label silver positive.
+5. Filter: skip duplikat, kontrak yang gagal di semua tools, LOC terlalu kecil.
+
+Output: `processed/wild_labels.parquet`, `processed/wild_functions.parquet`,
+`processed/wild_pool.parquet`.
+
+### Stage 3 — K-Fold Split
+
+- Curated dibagi 5 fold dengan multi-label stratified split.
+- Wild di-sample jadi balanced pool (~19,906 contracts) — selalu di TRAIN side.
+- Aturan: TEST hanya gold (Curated), TRAIN bisa campur (Curated + Wild silver).
+
+Output: `processed/curated_folds.parquet`, `processed/wild_pool.parquet`,
+`processed/cv_split_summary.json`.
+
+### Stage 4 — Function Extraction + Multi-Source Features
+
+**4a. Function-level extraction** dengan custom Solidity parser
+(`src/preprocessing/solidity_parser.py`). Hasil: 972 Curated functions + 591k Wild functions.
+
+**4b. Smart sampling + 53 hand-crafted features.** Sampling per class (5k pos + 15k neg)
+→ ~110k functions. Extract regex-based features (`hc_call_value_count`, `hc_has_tx_origin`,
+`hc_safemath_used`, dll.).
+
+**4c. Tool features (106 features).** Untuk setiap kontrak, lookup output 9 tools dari
+RESULTS dataset → per-detector counts + per-tool totals + per-category votes.
+
+**4d. Expert rule features (10 features).** High-precision deterministic rules
+(`rule_reentrancy_strong`, `rule_arithmetic_pre08_no_safemath`, dll.).
+
+Output: `processed/sampled_functions_v2.parquet` (110k rows × 193 columns).
+
+### Stage 5 — Training XGBoost (Multi-Source Fusion)
+
+Pipeline akurasi terbaru menyediakan dua mode:
+
+- **fast**: fitur runtime-available (`hc_* + rule_* + TF-IDF`)
+- **deep**: fitur benchmark (`hc_* + rule_* + tool_* + TF-IDF`) → 5,170 features total
+
+Quick run:
 
 ```bash
-cd src/preprocessing
-
-# 0) Verifikasi dataset (cek semua file ada)
-python verify_dataset.py
-
-# 1) Olah Curated → gold labels
-python stage1_curated.py
-
-# 2) Olah Wild + Results → silver labels (tool voting)
-python stage2_wild.py
-
-# 3) Unifikasi dan split train/val/test
-python stage3_split.py
+python src/training/stage5_train_xgb_dual.py --mode fast --quick
+python src/training/stage5_train_xgb_dual.py --mode deep --quick
+python src/training/stage6_evaluate_dual.py
 ```
 
-Output preprocessing tersimpan di `processed/`.
+5-Fold CV training, satu binary classifier per class. `scale_pos_weight` capped at 5,
+`n_estimators=300`, `max_depth=6`. Refine Wild silver labels dengan positive relevance +
+safety filter.
 
-## Metodologi Pengolahan Dataset dan Training
+Output:
 
-Berikut pipeline pengolahan tiga dataset secara konkret, dari data mentah sampai training dan evaluasi model.
-
-### Overview Pipeline
-
-```text
-+--------------------------------------------------------------------+
-| CURATED (gold)    WILD (raw .sol)    RESULTS (tool outputs)         |
-|      |                   |                    |                     |
-|      |                   +---------+----------+                     |
-|      |                             |                                |
-|      |                             v                                |
-|      |                 Tool Voting -> Silver Labels                 |
-|      |                             |                                |
-|      +------------+----------------+                                |
-|                   v                                                 |
-|   Unified Dataset (Solidity + label per kontrak/function)          |
-|                   |                                                 |
-|                   v                                                 |
-|         Feature Extraction (beberapa jalur)                         |
-|                   |                                                 |
-|                   v                                                 |
-|              Train Model + Evaluasi                                 |
-+--------------------------------------------------------------------+
-```
-
-### Stage 1: Olah Curated (Gold Label)
-
-Input:
-
-- `smartbugs-curated-main/dataset/<category>/<file>.sol`
-- `smartbugs-curated-main/vulnerabilities.json`
-
-Langkah:
-
-1. Parse `vulnerabilities.json` untuk mendapatkan mapping file ke kategori dan line vulnerability.
-2. Untuk setiap file `.sol`:
-   - baca source code;
-   - parse ke AST;
-   - extract daftar function beserta rentang barisnya;
-   - map line vulnerability ke function yang menaungi line tersebut;
-   - extract konteks kontrak seperti state variables, modifiers, dan inheritance.
-3. Hasil akhirnya adalah dataset function-level dengan label gold per function.
-
-Contoh struktur output:
-
-```text
-+--------------+----------+--------------+--------------+--------+
-| contract_id  | function | header_ctx   | source_code  | labels |
-+--------------+----------+--------------+--------------+--------+
-| Fibonacci..  | withdraw | contract...  | function...  | [AC]   |
-| Fibonacci..  | deposit  | contract...  | function...  | []     |
-+--------------+----------+--------------+--------------+--------+
-```
-
-Output utama:
-
-- `processed/curated_labels.parquet`
-- `processed/curated_labels.csv`
-- `processed/curated_functions.parquet`
-
-### Stage 2: Olah Wild + Results (Silver Label via Tool Voting)
-
-Input:
-
-- `smartbugs-wild-master/contracts/0x*.sol`
-- `smartbugs-results-master/results/<tool>/icse20/0x*/result.json`
-
-Langkah:
-
-1. Iterasi setiap kontrak Wild.
-2. Untuk setiap tool, baca `result.json` lalu ekstrak vulnerability yang terdeteksi.
-3. Mapping nama vulnerability dari masing-masing tool ke kategori SmartBugs.
-4. Aggregate vote per kategori per kontrak.
-5. Terapkan aturan labeling berbasis voting:
-   - strict: label aktif jika terdeteksi >= 3 tools;
-   - moderate: label aktif jika terdeteksi >= 2 tools;
-   - loose: label aktif jika terdeteksi >= 1 tool.
-6. Rekomendasi yang dipakai adalah threshold `>= 2 tools` untuk menyeimbangkan precision dan recall.
-7. Filter data:
-   - skip kontrak duplikat;
-   - skip kontrak yang gagal diproses oleh semua tools;
-   - skip kontrak dengan LOC terlalu kecil.
-
-Contoh struktur output:
-
-```text
-+--------------+--------------+------------------+----------+
-| contract_id  | source_code  | labels (silver)  | vote_cnt |
-+--------------+--------------+------------------+----------+
-| 0xABC...     | pragma...    | [reentrancy]     | 3        |
-+--------------+--------------+------------------+----------+
-```
-
-Output utama:
-
-- `processed/wild_labels.parquet`
-- `processed/wild_labels.csv`
-- `processed/wild_functions.parquet`
-- `processed/wild_pool.parquet`
-
-### Stage 3: Unifikasi dan Split
-
-Dataset gabungan terdiri dari:
-
-- Curated functions dengan label gold berkepercayaan tinggi.
-- Wild contracts/functions dengan label silver hasil consensus tools.
-
-Strategi split:
-
-- Training set: Wild silver + 60% Curated gold
-- Validation set: 20% Curated gold
-- Test set: 20% Curated gold
-
-Catatan:
-
-- Jangan train di Wild lalu test di Wild.
-- Curated test set dipakai sebagai ground truth benchmark agar evaluasi tetap valid.
-
-Output utama:
-
-- `processed/train.parquet`
-- `processed/val.parquet`
-- `processed/test.parquet`
-- `processed/cv_split_summary.json`
-- `processed/cv_split_report.md`
-
-### Stage 4: Feature Extraction
-
-#### Path A: XGBoost
-
-Tiga jalur fitur dapat digabungkan:
-
-- bytecode/opcode sequence lalu diubah ke TF-IDF;
-- hand-crafted features seperti `has_call_value`, `num_external_calls`, `uses_tx_origin`, `has_modifier`, `num_state_vars`, dan fitur statis lain;
-- source-token TF-IDF dari kode Solidity.
-
-Semua fitur kemudian digabung menjadi matriks fitur untuk training model gradient boosting.
-
-Artefak yang dihasilkan pada implementasi ini meliputi:
-
-- `processed/sampled_functions.parquet`
-- `processed/sampled_functions_v2.parquet`
-- `processed/handcrafted_feature_names.json`
-- `processed/rule_feature_names.json`
-- `processed/tool_feature_names.json`
-- model TF-IDF dan XGBoost di folder `models/`
-
-#### Path B: CodeBERT (opsional metodologis)
-
-Untuk pendekatan function-level berbasis transformer:
-
-1. Gabungkan `header_context + source_code`.
-2. Tokenisasi hingga panjang maksimum model.
-3. Jika melebihi batas token, gunakan sliding window dengan overlap.
-4. Hasil akhir berupa tensor `input_ids` dan `attention_mask` untuk fine-tuning model multi-label.
-
-Bagian ini merupakan opsi metodologis jika eksperimen ingin diperluas ke model berbasis transformer.
-
-### Stage 5: Training dan Evaluasi
-
-Training multi-label classification dapat dilakukan dengan dua pendekatan:
-
-- XGBoost: satu model per kategori vulnerability.
-- CodeBERT: satu model dengan banyak sigmoid output.
-
-Evaluasi dilakukan pada Curated test set dengan metrik:
-
-- precision, recall, dan F1 per kategori;
-- macro-F1, micro-F1, dan hamming loss secara keseluruhan;
-- perbandingan terhadap 9 tools individual dari dataset Results.
-
-Output evaluasi yang tersedia di project ini:
-
-- `processed/metrics_aggregated.json`
-- `processed/metrics_per_fold.json`
-- `processed/contract_level_metrics.json`
-- `processed/baseline_comparison.json`
-- `processed/threshold_tuning.json`
-- `processed/training_report.md`
-- `processed/evaluation_report.md`
+- `models/fast/`, `models/deep/` (joblib XGBoost + TF-IDF vectorizer)
 - `processed/predictions_function_level.parquet`
-- `processed/contract_level_predictions.parquet`
+- `processed/metrics_aggregated.json`, `metrics_per_fold.json`
+
+### Stage 6 — Evaluasi Contract-Level + Comparison vs 9 Tools
+
+- Aggregate function predictions → contract level (max probability per class).
+- Tuning threshold per class untuk maximize F1.
+- Compare hasil dengan 9 baseline tools (lookup di RESULTS dataset).
+
+Output:
+
+- `processed/contract_level_metrics.json`
+- `processed/threshold_tuning.json`
+- `processed/baseline_comparison.json`
+- `processed/evaluation_report.md`
+- `processed/benchmark_metrics.json`, `product_readiness.json`
+
+Tampilkan rekap rapi:
+
+```bash
+python src/training/show_results.py
+```
+
+### Stage 7 — RAG Knowledge Base + Explainer
+
+```bash
+python src/rag/build_index.py    # build ChromaDB index dari knowledge base
+python src/rag/stage7_demo.py    # end-to-end demo: predict + explain
+```
+
+Hasil: predictions ditemani penjelasan vulnerability + mitigasi + kode fix dalam
+Bahasa Indonesia, lengkap dengan referensi SWC Registry.
+
+### Stage 8 — Case Study Real-World Hacks
+
+Validasi model di 10 kontrak hack terkenal (The DAO, Parity Wallet, BEC Token,
+SmartBillions, GovernMental, dll.) dengan total kerugian historis >$1 miliar.
+
+```bash
+python src/case_study/stage8_hack_detection.py            # full report dengan RAG
+python src/case_study/stage8_hack_detection.py --no-rag   # versi cepat
+```
+
+Output:
+
+- `processed/case_study_report.md` — detailed report per hack + honest analysis
+- `processed/case_study_summary.csv`
+
+Detection rate: 4/10 (3 FULL_MATCH + 1 PARTIAL). Honest analysis menjelaskan setiap miss
+case dengan technical reason di section "Why Some Detections Failed".
 
 ## Strategi Pelabelan
 
-| Sumber                          | Jumlah         | Tipe label | Pakai untuk        |
-|---------------------------------|----------------|------------|--------------------|
-| Curated (vulnerabilities.json)  | 143            | Gold       | Test + Val + Train |
-| Wild + Results (tool voting ≥2) | ~10k–25k       | Silver     | Train (bulk)       |
+| Sumber                          | Jumlah     | Tipe label | Dipakai untuk      |
+|---------------------------------|-----------:|------------|--------------------|
+| Curated (vulnerabilities.json)  | 143        | Gold       | Test + Train       |
+| Wild + Results (tool voting ≥2) | ~35k       | Silver     | Train (bulk)       |
 
-Test set HANYA berisi label gold — supaya evaluasi akurat.
+Test set HANYA berisi gold label — supaya evaluasi tetap valid.
 
-## Taksonomi (10 Kategori DASP)
+## Taksonomi Vulnerability (DASP Top 10)
 
 `access_control`, `arithmetic`, `bad_randomness`, `denial_of_service`,
 `front_running`, `other`, `reentrancy`, `short_addresses`,
-`time_manipulation`, `unchecked_low_level_calls`
+`time_manipulation`, `unchecked_low_level_calls`.
+
+7 active classes (yang punya cukup sampel di Curated): semua di atas kecuali `front_running`,
+`other`, dan `short_addresses`.
+
+## Dokumentasi Pendukung
+
+- `processed/training_report.md` — function-level metrics per fold
+- `processed/evaluation_report.md` — contract-level + comparison vs 9 tools
+- `processed/case_study_report.md` — validasi 10 famous hack contracts
+- `processed/stage9_production_roadmap.md` — roadmap deploy ke production
+- `processed/stage10_limitations_future_work.md` — limitasi + future work + threats to validity
+
+## Lisensi & Atribusi
+
+Project ini menggunakan dataset publik dari ekosistem SmartBugs (Durieux et al., ICSE 2020).
+Tools baseline dikembangkan oleh Trail of Bits (Slither, Manticore), ConsenSys (Mythril),
+NUS (Oyente, MAIAN), ETH Zurich (Securify), University of Luxembourg (Osiris, HoneyBadger),
+dan SmartDec (SmartCheck). Lihat `processed/stage10_limitations_future_work.md` section
+"Referensi" untuk daftar paper lengkap. Education purpose only.

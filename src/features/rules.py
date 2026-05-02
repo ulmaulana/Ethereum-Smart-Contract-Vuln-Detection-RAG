@@ -111,6 +111,8 @@ def rule_access_control_no_modifier(body: str, header: str) -> int:
     Sensitive function (selfdestruct, ownership change) tanpa modifier check.
     """
     sig = body[:300]  # signature & first lines
+    if re.search(r"\bconstructor\s*\(", sig):
+        return 0
     if not RE_PUBLIC_EXTERNAL.search(sig):
         return 0
     if RE_OWNER_CHECK.search(body):
